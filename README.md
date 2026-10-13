@@ -1,6 +1,6 @@
 # Mora Bygg theme för Hermes Desktop
 
-Mora Byggs design v1 som tema i Hermes Desktop: Mora-blå för handling och fokus, bläck för text, Source Sans 3. Ljust och mörkt läge.
+Mora Byggs design v1 som tema i Hermes Desktop: Mora-blå för handling och fokus, bläck för text, Source Sans 3. Ljust och mörkt läge. Två varianter: **Mora Bygg** (strikt enligt DESIGN.md) och **Mora Bygg Plus** (samma färger, med gradienter).
 
 Alla värden kommer från `MoraBygg/Design/DESIGN.md` (mb-Agentic). Det här repot bara läser därifrån.
 
@@ -58,9 +58,23 @@ DESIGN.md säger att mörkt läge inte är definierat. Det här är ett förslag
 
 Sämsta par: kontrollkant mot kort 3,62:1. All text ≥ 4,5:1. Om Mora Bygg vill ha mörkt läge som standard bör värdena flyttas in i DESIGN.md (arkivera, lint 0/0, bygg exporter) och läsas därifrån.
 
-## Följer DESIGN.md
+## Mora Bygg Plus (gradienter, avsteg från DESIGN.md)
 
-- Inga gradienter, ingen glans, inga mönster. Bara platta ytor och 1 px linjer.
+Pluginen registrerar två teman. **Mora Bygg** följer DESIGN.md strikt. **Mora Bygg Plus** använder samma färger men med mer atmosfär, efter beslut av Jerry (Hextek). DESIGN.md förbjuder gradienter, så Plus är ett medvetet avsteg och ska inte användas i Mora Byggs egna system utan deras godkännande.
+
+| | Ljust | Mörkt |
+|---|---|---|
+| Chatt | Mora-blått ljus uppifrån (8 %), `canvas` → `canvas` + 4 % blått | "Midnattsblått": `ink` + 20 % `primary`, blått ljus uppifrån (55 %) |
+| Sidomeny | vit → `primarySoft` nertill | `ink` + 10 % `primary` → mer blått nertill |
+| Glas/translucency | bara genomskinligt blått ljus ovanpå glaset | samma |
+
+Varje gradientstopp är en blandning av befintliga tokens. Kontrastspärren kontrollerar text mot det ljusaste och mörkaste stoppet (sämsta: dämpad text mot glödens mitt, 4,65:1). Glasläget går inte att räkna fram i förväg, eftersom det beror på skrivbordet bakom. Där har vi mätt pixlar i appen: sämsta 4,68:1. Appens papperstextur är nedtonad i Plus ljust, annars försvinner glöden.
+
+Byt med ⌘K → **Mora Bygg Plus: Aktivera tema** / **Mora Bygg: Aktivera tema**.
+
+## Följer DESIGN.md (gäller standardtemat)
+
+- Inga gradienter, ingen glans, inga mönster i standardtemat. Bara platta ytor och 1 px linjer.
 - En accent: Mora-blå. Statusfärger bara för status.
 - Logotypen används inte (ingen godkänd negativ version finns, och appen har ingen logoplats).
 - Source Sans 3 är inbäddad (woff2, OFL), inga typsnitt hämtas från nätet. Kod: JetBrains Mono, som följer med appen.

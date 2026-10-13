@@ -109,30 +109,36 @@ def light(t: dict) -> dict:
     }
 
 
-def dark_tokens(t: dict) -> dict:
+def dark_tokens(t: dict, plus: bool = False) -> dict:
     """Dark mode derived only from DESIGN.md tokens: ink becomes the canvas,
     canvas becomes the text, Mora-blå and status colours are lifted toward
-    canvas until they clear AA on every dark surface."""
-    ink, canvas = t["ink"], t["canvas"]
+    canvas until they clear AA on every dark surface.
+
+    plus=True: "midnight Mora-blå" - ink tinted 20 % toward primary, sidebar
+    10 %, so the blue reads as atmosphere and not only as an accent."""
+    ink, canvas, primary = t["ink"], t["canvas"], t["primary"]
+    bg = mix(ink, primary, 0.20) if plus else ink
+    card_w, pop_w = (0.06, 0.10) if plus else (0.05, 0.08)
     d = {
-        "bg": ink,                                  # hammer black
-        "card": mix(ink, canvas, 0.05),
-        "pop": mix(ink, canvas, 0.08),
+        "bg": bg,
+        "sidebar": mix(ink, primary, 0.10) if plus else ink,
+        "card": mix(bg, canvas, card_w),
+        "pop": mix(bg, canvas, pop_w),
         "text": canvas,
-        "muted": mix(canvas, ink, 0.40),
-        "border": mix(ink, canvas, 0.15),
-        "control": mix(ink, canvas, 0.45),
-        "primary": mix(t["primary"], canvas, 0.60),  # Mora-blå, lifted
+        "muted": mix(canvas, bg, 0.35 if plus else 0.40),
+        "border": mix(bg, canvas, 0.15),
+        "control": mix(bg, canvas, 0.45),
+        "primary": mix(primary, canvas, 0.60),       # Mora-blå, lifted
         "ok": mix(t["ok"], canvas, 0.45),
         "warning": mix(t["warning"], canvas, 0.45),
-        "danger": mix(t["danger"], canvas, 0.50),
+        "danger": mix(t["danger"], canvas, 0.55 if plus else 0.50),
     }
-    d["accent"] = mix(ink, t["primary"], 0.45)       # selected state: Mora-blå tint
+    d["accent"] = mix(bg, primary, 0.45)             # selected state: Mora-blå tint
     return d
 
 
-def dark(t: dict) -> dict:
-    d = dark_tokens(t)
+def dark(t: dict, plus: bool = False) -> dict:
+    d = dark_tokens(t, plus)
     return {
         "background": d["bg"],
         "foreground": d["text"],
@@ -156,14 +162,14 @@ def dark(t: dict) -> dict:
         "composerRing": d["primary"],
         "destructive": d["danger"],
         "destructiveForeground": t["ink"],
-        "sidebarBackground": d["bg"],
+        "sidebarBackground": d["sidebar"],
         "sidebarBorder": d["border"],
         "userBubble": d["pop"],
         "userBubbleBorder": d["border"],
     }
 
 
-def terminal(t: dict, mode: str) -> dict:
+def terminal(t: dict, mode: str, plus: bool = False) -> dict:
     if mode == "light":
         return {
             "foreground": t["ink"], "cursor": t["primary"], "selectionBackground": rgba(t["primary"], 0.2),
@@ -171,7 +177,7 @@ def terminal(t: dict, mode: str) -> dict:
             "yellow": t["warning"], "brightYellow": t["warning"], "blue": t["primary"], "brightBlue": t["primary"],
             "black": t["ink"], "brightBlack": t["textMuted"], "white": t["textSoft"], "brightWhite": t["ink"],
         }
-    d = dark_tokens(t)
+    d = dark_tokens(t, plus)
     return {
         "foreground": d["text"], "cursor": d["primary"], "selectionBackground": rgba(d["primary"], 0.3),
         "red": d["danger"], "brightRed": d["danger"], "green": d["ok"], "brightGreen": d["ok"],
@@ -210,11 +216,89 @@ def check(name: str, c: dict) -> list:
     return rows
 
 
+# ── Plus: gradients ────────────────────────────────────────────────────────
+#
+# DESIGN.md v1 says "no gradients". Plus is an explicit, opt-in departure that
+# Jerry asked for: same tokens, more atmosphere. Every gradient stop is a token
+# mix, and the gate below checks text against the lightest/darkest stop.
+
+def plus_stops(t: dict) -> dict:
+    canvas, primary, surface = t["canvas"], t["primary"], t["surface"]
+    d = dark_tokens(t, plus=True)
+    return {
+        "light": {
+            "glow": (primary, 0.08),                       # radial from the top
+            "top": canvas,
+            "bottom": mix(canvas, primary, 0.04),
+            "sidebarTop": surface,
+            "sidebarBottom": t["primarySoft"],
+            "peak": mix(canvas, primary, 0.08),            # glow centre, worst case
+        },
+        "dark": {
+            "glow": (primary, 0.55),
+            "top": d["bg"],
+            "bottom": mix(t["ink"], primary, 0.12),
+            "sidebarTop": d["sidebar"],
+            "sidebarBottom": mix(d["sidebar"], primary, 0.22),
+            "peak": mix(d["bg"], primary, 0.55),
+        },
+    }
+
+
+def check_plus(t: dict, lc: dict, dc: dict) -> None:
+    g = plus_stops(t)
+    fails, worst = [], []
+    for mode, c in (("light", lc), ("dark", dc)):
+        for stop in ("peak", "top", "bottom", "sidebarTop", "sidebarBottom"):
+            for fg in ("foreground", "mutedForeground", "primary"):
+                r = contrast(c[fg], g[mode][stop])
+                worst.append((r, f"plus {mode}: {fg} on gradient {stop} {r:.2f}"))
+                if r < AA:
+                    fails.append(f"plus {mode}: {fg} on gradient {stop} {r:.2f} < {AA}")
+    if fails:
+        raise SystemExit("contrast gate failed:\n  " + "\n  ".join(fails))
+    w = min(worst)
+    print(f"  plus gradients: {len(worst)} pairs pass, worst {w[1].split(': ', 1)[1]}")
+
+
+def plus_css(t: dict) -> str:
+    g = plus_stops(t)
+    base = ":root[data-hermes-theme='mora-bygg-plus']"
+    solid = f"{base}:not([data-hermes-glass])"
+    glass = f"{base}[data-hermes-glass]"
+    out = []
+    for mode in ("light", "dark"):
+        m = g[mode]
+        glow = f"radial-gradient(130% 75% at 50% -15%, {rgba(*m['glow'])} 0%, transparent 70%)"
+        side_tint = f"linear-gradient(180deg, transparent 0%, transparent 45%, {rgba(t['primary'], 0.06 if mode == 'light' else 0.22)} 100%)"
+        out.append(f"""{solid}[data-hermes-mode='{mode}'] [data-chat-surface] {{
+  background-color: {m['top']};
+  background-image:
+    {glow},
+    linear-gradient(180deg, {m['top']} 0%, {m['bottom']} 100%);
+}}
+{solid}[data-hermes-mode='{mode}'] [data-tour='sessions-sidebar'] {{
+  background-image: linear-gradient(180deg, {m['sidebarTop']} 0%, {m['sidebarTop']} 45%, {m['sidebarBottom']} 100%);
+}}
+/* Glass: the window material shows through, so only translucent light is
+   layered on top - never an opaque fill that would hide the glass. */
+{glass}[data-hermes-mode='{mode}'] [data-chat-surface] {{
+  background-image: {glow};
+}}
+{glass}[data-hermes-mode='{mode}'] [data-tour='sessions-sidebar'] {{
+  background-image: {side_tint};
+}}""")
+    out.append(f"""{base} [data-chat-surface] [data-slot='composer-bounds'] {{
+  background: transparent !important;
+}}""")
+    return "\n".join(out)
+
+
 # ── output ─────────────────────────────────────────────────────────────────
 
-def custom_css(t: dict) -> str:
-    d = dark_tokens(t)
-    scope = ":root[data-hermes-theme='mora-bygg']"
+def custom_css(t: dict, name: str, plus: bool = False) -> str:
+    d = dark_tokens(t, plus)
+    scope = f":root[data-hermes-theme='{name}']"
     return f"""
 @font-face {{
   font-family: 'Source Sans 3 Variable';
@@ -251,48 +335,60 @@ def custom_css(t: dict) -> str:
   --ui-red: {d['danger']};
   --ui-selection-background: {rgba(d['primary'], 0.32)} !important;
 }}
+{plus_css(t) if plus else ''}
 """.strip()
 
 
-def build() -> str:
-    t = tokens()
-    lc, dc = light(t), dark(t)
-    print("contrast (WCAG):")
-    check("light", lc)
-    check("dark", dc)
+FONT_SANS = ('"Source Sans 3 Variable", "Source Sans 3", "Segoe UI", -apple-system, '
+             'BlinkMacSystemFont, system-ui, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", emoji')
+FONT_MONO = ('"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace, '
+             '"Apple Color Emoji", "Segoe UI Emoji", emoji')
 
-    lt, dt = terminal(t, "light"), terminal(t, "dark")
+
+def theme(t: dict, name: str, label: str, description: str, plus: bool) -> dict:
+    lc, dc = light(t), dark(t, plus)
+    lt, dt = terminal(t, "light"), terminal(t, "dark", plus)
     if PREVIEW == "light":
         dc, dt = lc, lt
     elif PREVIEW == "dark":
         lc, lt = dc, dt
-
-    theme = {
-        "name": "mora-bygg",
-        "label": "Mora Bygg",
-        "description": "Mora Bygg design v1: Mora-blå för handling, bläck för text, ljust och mörkt läge",
+    return {
+        "name": name,
+        "label": label,
+        "description": description,
         "colors": lc,
         "darkColors": dc,
-        "typography": {
-            "fontSans": ('"Source Sans 3 Variable", "Source Sans 3", "Segoe UI", -apple-system, '
-                         'BlinkMacSystemFont, system-ui, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", emoji'),
-            "fontMono": ('"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace, '
-                         '"Apple Color Emoji", "Segoe UI Emoji", emoji'),
-        },
+        "typography": {"fontSans": FONT_SANS, "fontMono": FONT_MONO},
         "terminal": lt,
         "darkTerminal": dt,
-        "customCSS": custom_css(t),
+        "customCSS": custom_css(t, name, plus),
     }
+
+
+def build() -> str:
+    t = tokens()
+    print("contrast (WCAG):")
+    check("light", light(t))
+    check("dark", dark(t))
+    check("plus dark", dark(t, plus=True))
+    check_plus(t, light(t), dark(t, plus=True))
+
+    themes = [
+        theme(t, "mora-bygg", "Mora Bygg",
+              "Mora Bygg design v1: Mora-blå för handling, bläck för text, ljust och mörkt läge", False),
+        theme(t, "mora-bygg-plus", "Mora Bygg Plus",
+              "Mora Bygg med gradienter: blått ljus uppifrån, midnattsblått mörkt läge", True),
+    ]
 
     banner = "PREVIEW BUILD (" + PREVIEW + " only) - do not ship" if PREVIEW else "Do not edit by hand."
     return f"""// GENERATED by build.py from Mora Bygg Design/DESIGN.md v1. {banner}
 import {{ PALETTE_AREA, THEMES_AREA, host, requestTheme }} from '@hermes/plugin-sdk'
 
 const ID = 'mora-bygg-theme'
-const THEME = {json.dumps(theme, indent=2, ensure_ascii=False)}
+const THEMES = {json.dumps(themes, indent=2, ensure_ascii=False)}
 
-function activate() {{
-  if (!requestTheme(THEME.name)) {{
+function activate(name) {{
+  if (!requestTheme(name)) {{
     host.notifyError('Mora Bygg-temat kunde inte aktiveras.')
   }}
 }}
@@ -301,17 +397,24 @@ export default {{
   id: ID,
   name: 'Mora Bygg Theme',
   register(ctx) {{
-    ctx.register({{ id: 'mora-bygg', area: THEMES_AREA, data: THEME }})
-    ctx.register({{
-      id: 'activate',
-      area: PALETTE_AREA,
-      data: {{ id: 'mora-bygg-theme.activate', label: 'Mora Bygg: Aktivera tema', keywords: ['theme', 'tema', 'mora', 'bygg'], run: activate }}
-    }})
+    for (const theme of THEMES) {{
+      ctx.register({{ id: theme.name, area: THEMES_AREA, data: theme }})
+      ctx.register({{
+        id: `activate-${{theme.name}}`,
+        area: PALETTE_AREA,
+        data: {{
+          id: `mora-bygg-theme.activate.${{theme.name}}`,
+          label: `${{theme.label}}: Aktivera tema`,
+          keywords: ['theme', 'tema', 'mora', 'bygg', 'plus', 'gradient'],
+          run: () => activate(theme.name)
+        }}
+      }})
+    }}
 
-    // Select it once on first install; afterwards the user's own pick wins.
+    // Select the plain theme once on first install; afterwards the user's pick wins.
     if (!ctx.storage.get('autoApplied', false)) {{
       ctx.storage.set('autoApplied', true)
-      queueMicrotask(activate)
+      queueMicrotask(() => activate('mora-bygg'))
     }}
   }}
 }}
